@@ -10,7 +10,7 @@
 - Расширение целиком в `extension/` — эту папку грузят в Chrome; в неё не клади ничего с именем на `_`, Chrome откажется загружать расширение.
 - Мир страницы: `extension/page.js` (`content_scripts` с `"world": "MAIN"`, `document_start`). Он оборачивает только `MediaDevices.prototype.getUserMedia`: аудиотрек микрофона и шина джинглов (`GainNode`) сводятся в общем `AudioContext` в `MediaStreamDestination`, и dion получает смешанный трек (`label`/`getSettings`/`getConstraints`/`applyConstraints` проксируются к микрофону, `stop()` останавливает микрофон). Не удалось смешать (нет аудио, `AudioContext` не `running` за ~300 мс, ошибка) — отдаётся исходный поток.
 - Изолированный мир: `extension/content.js` — сообщения popup (`playSound`, `toggleWebRTC`), локальное воспроизведение (ведущий слышит всегда), отправка звука в `page.js`, проброс `webrtcEnabled`. UI: `extension/popup.js`.
-- Связь мир страницы ↔ content script — только `CustomEvent` на `document`: в страницу `__dionJinglesPlayWithUrl` (base64 data-URL mp3), `__dionJinglesPlayGenerated`, `__dionJinglesSetEnabled`; из страницы `__dionJinglesHello`, `__dionJinglesRequestPlay`. popup → content script — `chrome.tabs.sendMessage`.
+- Связь мир страницы ↔ content script — только `CustomEvent` на `document`: в страницу `__dionJinglesPlayWithUrl` (base64 data-URL mp3), `__dionJinglesPlayGenerated`, `__dionJinglesSetEnabled`; из страницы `__dionJinglesHello`, `__dionJinglesRequestPlay`. Состояние эфира: `__dionJinglesQueryAir` → `__dionJinglesAirState` (`{id, air}`). popup → content script — `chrome.tabs.sendMessage`; на `playSound` ответ асинхронный `{success, air}` (нет ответа от `page.js` за ~300 мс → `air: 'unknown'`), popup по `air` показывает предупреждение.
 - `DEBUG*.md`, `HOW_TO_FIND_RTCPEERCONNECTION.md`, `DEVTOOLS_GUIDE.md`, README/INSTALL описывают старую схему (перехват `RTCPeerConnection`) и устарели — не опирайся на них.
 
 ## Running and verifying
@@ -22,7 +22,8 @@
 ## Conventions that differ from defaults
 
 - Патчи браузерных API делай только в `extension/page.js`; в `content.js` у content script своя копия `window`, и подмена там на dion не действует. Инлайн-`<script>` и `<script src>` не используй.
-- Не оборачивай `RTCPeerConnection` и не вызывай `addTrack`/`addTransceiver`/`replaceTrack` на соединениях dion: лишний отправитель ломает SDP, сервер отвечает `sdp_answer error` и вход в комнату падает.
+- Соединения dion только наблюдай, не управляй ими. Сам не вызывай `addTrack`/`addTransceiver`/`replaceTrack`/`setParameters` и не меняй SDP: лишний отправитель ломает SDP, сервер отвечает `sdp_answer error` и вход в комнату падает. Пассивные обёртки `RTCRtpSender.prototype.replaceTrack`, `RTCPeerConnection.prototype.addTrack`/`addTransceiver` в `page.js` допустимы только для наблюдения: аргументы и результат без изменений, исключения наблюдателя глотаются.
+- Мьют dion: в звонке — `sender.replaceTrack(null)`, включение — `track.enabled = true` + `replaceTrack(смешанный трек)`; в превью — `track.enabled = false`. Поэтому `mixedEnabled` в `status()` не индикатор мьюта — смотри `status().air` (`disabled` / `no-mixer` / `muted` / `on-air`). Микрофон за пользователя не включай.
 - Комментарии и логи — на русском; логи с префиксом `[DionJingles]`.
 
 ## Known pitfalls

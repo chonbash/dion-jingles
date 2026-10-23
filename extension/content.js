@@ -160,12 +160,45 @@
     dispatchSoundToPageContext(soundType);
   }
 
+  // --- Состояние эфира от page.js ---
+  // disabled / no-mixer / muted / on-air; нет ответа — unknown (popup не предупреждает).
+
+  const AIR_TIMEOUT_MS = 300;
+  let airQuerySeq = 0;
+
+  function queryAirState() {
+    return new Promise((resolve) => {
+      const id = `${Date.now()}-${++airQuerySeq}`;
+      let timer = null;
+      const onState = (ev) => {
+        const det = ev.detail || {};
+        if (det.id !== id) return;
+        finish(typeof det.air === 'string' ? det.air : 'unknown');
+      };
+      const finish = (air) => {
+        clearTimeout(timer);
+        document.removeEventListener('__dionJinglesAirState', onState);
+        resolve(air);
+      };
+      document.addEventListener('__dionJinglesAirState', onState);
+      timer = setTimeout(() => finish('unknown'), AIR_TIMEOUT_MS);
+      try {
+        document.dispatchEvent(new CustomEvent('__dionJinglesQueryAir', { detail: { id } }));
+      } catch (e) {
+        finish('unknown');
+      }
+    });
+  }
+
   // --- Команды ---
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'playSound') {
       playSound(request.soundType);
-      sendResponse({ success: true });
+      queryAirState()
+        .then((air) => sendResponse({ success: true, air }))
+        .catch(() => sendResponse({ success: true, air: 'unknown' }));
+      return true; // ответ асинхронный
     } else if (request.action === 'toggleWebRTC') {
       setWebRTCEnabled(request.enabled);
       sendResponse({ success: true, enabled: webrtcEnabled });

@@ -8,6 +8,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const webrtcInfo = document.getElementById('webrtcInfo');
 
   let webrtcEnabled = true; // По умолчанию включено
+  let statusResetTimer = null;
+
+  // Состояние эфира из page.js (через content.js) -> предупреждение.
+  // on-air и unknown — без предупреждения.
+  const AIR_WARNINGS = {
+    'muted': 'Микрофон выключен — участники не услышат',
+    'no-mixer': 'Звук не встроен — перезайдите в звонок',
+    'disabled': 'Встраивание выключено — звук только у вас'
+  };
 
   // Проверяем, открыта ли вкладка с dion.vc
   checkActiveTab();
@@ -112,21 +121,36 @@ document.addEventListener('DOMContentLoaded', () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       
       if (tab.url && tab.url.includes('dion.vc')) {
-        await chrome.tabs.sendMessage(tab.id, {
+        const response = await chrome.tabs.sendMessage(tab.id, {
           action: 'playSound',
           soundType: soundType
         });
-        
-        status.textContent = `Воспроизводится: ${getSoundName(soundType)}`;
-        setTimeout(() => {
-          status.textContent = 'Готов к использованию';
-        }, 1000);
+
+        // Новое нажатие отменяет прошлый сброс статуса и снимает прошлое предупреждение.
+        clearTimeout(statusResetTimer);
+        status.classList.remove('warning');
+
+        const warning = AIR_WARNINGS[response && response.air];
+        if (warning) {
+          // Предупреждение держится до следующего нажатия.
+          status.textContent = warning;
+          status.classList.add('warning');
+        } else {
+          status.textContent = `Воспроизводится: ${getSoundName(soundType)}`;
+          statusResetTimer = setTimeout(() => {
+            status.textContent = 'Готов к использованию';
+          }, 1000);
+        }
       } else {
+        clearTimeout(statusResetTimer);
+        status.classList.remove('warning');
         status.textContent = 'Откройте dion.vc для использования';
         status.classList.remove('active');
       }
     } catch (error) {
       console.error('Ошибка воспроизведения звука:', error);
+      clearTimeout(statusResetTimer);
+      status.classList.remove('warning');
       status.textContent = 'Ошибка: откройте dion.vc';
     }
   }

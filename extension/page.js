@@ -185,6 +185,143 @@
     console.warn(LOG, 'getUserMedia/AudioContext недоступны — джинглы только локально');
   }
 
+  // --- Пассивное наблюдение за отправителями dion (только чтение) ---
+  // Мьют dion в звонке — sender.replaceTrack(null), включение — track.enabled = true +
+  // replaceTrack(смешанный трек); в превью — track.enabled = false. Чтобы узнать,
+  // слышат ли участники джинглы, запоминаем отправителей, которых создаёт или меняет
+  // сам dion. Обёртки передают аргументы и результат без изменений; сами мы ничего
+  // не вызываем на соединениях и SDP не трогаем. Ошибки наблюдателя глотаются.
+
+  var HAS_WEAKREF = typeof WeakRef === 'function';
+  var senderEntries = [];          // { sender: WeakRef|RTCRtpSender, pc: WeakRef|RTCPeerConnection|null }
+  var knownSenders = new WeakSet();
+
+  function makeRef(obj) {
+    if (!obj) return null;
+    return HAS_WEAKREF ? new WeakRef(obj) : obj;
+  }
+
+  function deref(ref) {
+    if (!ref) return null;
+    return HAS_WEAKREF ? ref.deref() : ref;
+  }
+
+  function pcClosed(pc) {
+    try {
+      return !!pc && (pc.signalingState === 'closed' || pc.connectionState === 'closed');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Убираем собранных сборщиком мусора и отправителей закрытых соединений.
+  function pruneSenders() {
+    senderEntries = senderEntries.filter(function (e) {
+      var s = deref(e.sender);
+      if (!s) return false;
+      var pc = deref(e.pc);
+      if (e.pc && (!pc || pcClosed(pc))) {
+        knownSenders.delete(s);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  function observeSender(sender, pc) {
+    try {
+      if (!sender || typeof sender !== 'object') return;
+      if (knownSenders.has(sender)) {
+        if (pc) {
+          senderEntries.forEach(function (e) {
+            if (!e.pc && deref(e.sender) === sender) e.pc = makeRef(pc);
+          });
+        }
+        return;
+      }
+      knownSenders.add(sender);
+      pruneSenders();
+      senderEntries.push({ sender: makeRef(sender), pc: makeRef(pc || null) });
+    } catch (e) {
+      /* наблюдатель не должен влиять на dion */
+    }
+  }
+
+  function wrapMethod(proto, name, after) {
+    if (!proto) return;
+    var desc = Object.getOwnPropertyDescriptor(proto, name);
+    if (!desc || typeof desc.value !== 'function') return;
+    var original = desc.value;
+    var wrapped = {
+      [name]: function () {
+        var result = original.apply(this, arguments);
+        try { after(this, result, arguments); } catch (e) { /* только наблюдение */ }
+        return result;
+      }
+    }[name];
+    Object.defineProperty(proto, name, {
+      configurable: desc.configurable,
+      enumerable: desc.enumerable,
+      writable: desc.writable,
+      value: wrapped
+    });
+  }
+
+  var SenderProto = window.RTCRtpSender && window.RTCRtpSender.prototype;
+  var PCProto = window.RTCPeerConnection && window.RTCPeerConnection.prototype;
+
+  wrapMethod(SenderProto, 'replaceTrack', function (sender) {
+    observeSender(sender, null);
+  });
+  wrapMethod(PCProto, 'addTrack', function (pc, sender) {
+    observeSender(sender, pc);
+  });
+  wrapMethod(PCProto, 'addTransceiver', function (pc, transceiver) {
+    observeSender(transceiver && transceiver.sender, pc);
+  });
+
+  function isMixedTrack(track) {
+    if (!track) return false;
+    var found = false;
+    mixers.forEach(function (m) {
+      if (m.mixedTrack === track) found = true;
+    });
+    return found;
+  }
+
+  function onAirSenders() {
+    pruneSenders();
+    var count = 0;
+    senderEntries.forEach(function (e) {
+      var s = deref(e.sender);
+      var t = s && s.track;
+      if (t && isMixedTrack(t) && t.readyState === 'live' && t.enabled) count++;
+    });
+    return count;
+  }
+
+  // Слышат ли участники джинглы:
+  // disabled — «Встраивание» выключено; no-mixer — нет живого микшера;
+  // muted — смешанный трек не на отправителе или выключен; on-air — идёт в эфир.
+  function airState() {
+    if (!enabled) return 'disabled';
+    if (liveMixers().length === 0) return 'no-mixer';
+    return onAirSenders() > 0 ? 'on-air' : 'muted';
+  }
+
+  document.addEventListener('__dionJinglesQueryAir', function (ev) {
+    var det = ev.detail || {};
+    var air;
+    try {
+      air = airState();
+    } catch (e) {
+      air = 'unknown';
+    }
+    document.dispatchEvent(new CustomEvent('__dionJinglesAirState', {
+      detail: { id: det.id, air: air }
+    }));
+  });
+
   // --- Воспроизведение джинглов в общую шину ---
 
   // Параметры синтеза (как в content.js): длительность 0.5 с.
@@ -313,7 +450,9 @@
               mixedMuted: m.mixedTrack.muted
             };
           }),
-          liveMixers: liveMixers().length
+          liveMixers: liveMixers().length,
+          senders: (pruneSenders(), senderEntries.length),
+          air: airState()
         };
       },
       // Тот же путь, что кнопка popup: content.js играет локально и отправляет звук сюда.
