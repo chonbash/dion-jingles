@@ -1,29 +1,32 @@
 <!-- bmad:context -->
-<!-- Verified 2026-10-23 against 4a781b0. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
+<!-- Verified 2026-10-23 against working tree (page.js scheme). Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
 
 ## dion-jingles
 
-Расширение Chrome (Manifest V3, чистый JS без сборки) для ведущего встреч на dion.vc: по кнопке в popup подмешивает джинглы в исходящий аудиопоток, чтобы их слышали все участники. Сейчас участники звук не слышат — починка подмешивания главная задача. Бриф и планирование BMAD — в `_bmad-output/planning-artifacts/` (локально, в git не входит).
+Расширение Chrome (Manifest V3, чистый JS без сборки) для ведущего встреч на dion.vc: по кнопке в popup подмешивает джинглы в исходящий аудиопоток, чтобы их слышали все участники. Бриф и планирование BMAD — в `_bmad-output/planning-artifacts/` (локально, в git не входит).
 
 ## Where things are
 
 - Расширение целиком в `extension/` — эту папку грузят в Chrome; в неё не клади ничего с именем на `_`, Chrome откажется загружать расширение.
-- Код в мире страницы: `extension/inject.js` и строка `injectEarlyPageScript()` в `extension/content.js`; изолированный мир: остальной `content.js`; UI: `extension/popup.js`.
-- Связь мир страницы ↔ content script — только `CustomEvent` на `document` (`__dionJinglesPlayWithUrl`, `__dionJinglesPlayGenerated` и др.); popup → content script — `chrome.tabs.sendMessage`.
-- Отлаживаешь перехват — сначала `DEBUG_RTCPEERCONNECTION.md` и `DEBUG.md` (консольный API `window.dionJingles`).
+- Мир страницы: `extension/page.js` (`content_scripts` с `"world": "MAIN"`, `document_start`). Он оборачивает только `MediaDevices.prototype.getUserMedia`: аудиотрек микрофона и шина джинглов (`GainNode`) сводятся в общем `AudioContext` в `MediaStreamDestination`, и dion получает смешанный трек (`label`/`getSettings`/`getConstraints`/`applyConstraints` проксируются к микрофону, `stop()` останавливает микрофон). Не удалось смешать (нет аудио, `AudioContext` не `running` за ~300 мс, ошибка) — отдаётся исходный поток.
+- Изолированный мир: `extension/content.js` — сообщения popup (`playSound`, `toggleWebRTC`), локальное воспроизведение (ведущий слышит всегда), отправка звука в `page.js`, проброс `webrtcEnabled`. UI: `extension/popup.js`.
+- Связь мир страницы ↔ content script — только `CustomEvent` на `document`: в страницу `__dionJinglesPlayWithUrl` (base64 data-URL mp3), `__dionJinglesPlayGenerated`, `__dionJinglesSetEnabled`; из страницы `__dionJinglesHello`, `__dionJinglesRequestPlay`. popup → content script — `chrome.tabs.sendMessage`.
+- `DEBUG*.md`, `HOW_TO_FIND_RTCPEERCONNECTION.md`, `DEVTOOLS_GUIDE.md`, README/INSTALL описывают старую схему (перехват `RTCPeerConnection`) и устарели — не опирайся на них.
 
 ## Running and verifying
 
-- Сборки и тестов нет: после правки перезагрузи расширение в `chrome://extensions` и перезагрузи вкладку dion (content script стартует на `document_start`).
+- Сборки и тестов нет: после правки перезагрузи расширение в `chrome://extensions` и перезагрузи вкладку dion (content scripts стартуют на `document_start`, микшер создаётся только при `getUserMedia` после этого).
+- Проверка в консоли страницы (контекст `top`): `dionJingles.status()` — `intercepted: true`, `contextState: 'running'`, `liveMixers` ≥ 1; `dionJingles.play('applause')` — тот же путь, что кнопка popup. Слышимость у участника: во второй вкладке `AnalyserNode` на `srcObject` входящего аудиоэлемента — уровень растёт при `play()` с включённым микрофоном и не растёт с выключенным.
 - Итоговая проверка — только на слух: https://dion.vc/event/dvzhdanov-1 в двух вкладках или на двух устройствах, нажать звук, слушать во второй. Ты её выполнить не можешь — попроси пользователя и дождись результата; не объявляй исправление рабочим без него.
 
 ## Conventions that differ from defaults
 
-- Патчи `RTCPeerConnection`, `getUserMedia`, `RTCRtpSender` делай только в мире страницы (`extension/inject.js` / ранний инлайн-скрипт); в `content.js` у content script своя копия `window`, и подмена там на dion не действует.
+- Патчи браузерных API делай только в `extension/page.js`; в `content.js` у content script своя копия `window`, и подмена там на dion не действует. Инлайн-`<script>` и `<script src>` не используй.
+- Не оборачивай `RTCPeerConnection` и не вызывай `addTrack`/`addTransceiver`/`replaceTrack` на соединениях dion: лишний отправитель ломает SDP, сервер отвечает `sdp_answer error` и вход в комнату падает.
 - Комментарии и логи — на русском; логи с префиксом `[DionJingles]`.
 
 ## Known pitfalls
 
-- Агенты считали сессию перехваченной, когда она не была. Не делай вывод о перехвате по логам `content.js` — проверь в консоли страницы (контекст `top`), что `RTCPeerConnection.toString()` не `[native code]` и что аудио-sender в `pc.getSenders()` отправляет смешанный трек.
+- Агенты считали сессию перехваченной, когда она не была. Не делай вывод о перехвате по логам `content.js` — проверь `dionJingles.status()` в консоли страницы (контекст `top`).
 
 <!-- /bmad:context -->

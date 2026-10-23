@@ -1,11 +1,6 @@
 // Popup script для управления звуками
 
 document.addEventListener('DOMContentLoaded', () => {
-  const emitDebug = (hypothesisId, location, message, data) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7251/ingest/5df934a0-d656-4f8e-8cf9-eee01a9d00c5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8ca4bb'},body:JSON.stringify({sessionId:'8ca4bb',runId:'post-fix',hypothesisId,location,message,data,timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  };
   const buttons = document.querySelectorAll('.sound-button');
   const status = document.getElementById('status');
   const webrtcToggle = document.getElementById('webrtcToggle');
@@ -115,26 +110,22 @@ document.addEventListener('DOMContentLoaded', () => {
   async function playSound(soundType) {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      emitDebug('H17','popup.js:playSound','tab query result',{soundType,tabId:tab&&tab.id,url:tab&&tab.url});
       
       if (tab.url && tab.url.includes('dion.vc')) {
         await chrome.tabs.sendMessage(tab.id, {
           action: 'playSound',
           soundType: soundType
         });
-        emitDebug('H17','popup.js:playSound','sendMessage success',{soundType,tabId:tab.id});
         
         status.textContent = `Воспроизводится: ${getSoundName(soundType)}`;
         setTimeout(() => {
           status.textContent = 'Готов к использованию';
         }, 1000);
       } else {
-        emitDebug('H17','popup.js:playSound','tab not dion',{soundType,url:tab&&tab.url});
         status.textContent = 'Откройте dion.vc для использования';
         status.classList.remove('active');
       }
     } catch (error) {
-      emitDebug('H17','popup.js:playSound','sendMessage error',{soundType,error:String(error)});
       console.error('Ошибка воспроизведения звука:', error);
       status.textContent = 'Ошибка: откройте dion.vc';
     }

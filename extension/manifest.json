@@ -3,19 +3,35 @@
   "name": "Dion Jingles",
   "version": "1.0.0",
   "description": "Воспроизведение звуковых джинглов во время видеоконференций на dion.vc",
+  "minimum_chrome_version": "111",
   "permissions": [
     "activeTab",
     "storage"
   ],
   "host_permissions": [
     "https://dion.vc/*",
-    "https://*.dion.vc/*",
-    "http://127.0.0.1:7251/*"
+    "https://*.dion.vc/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://dion.vc/*", "https://*.dion.vc/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://dion.vc/*",
+        "https://*.dion.vc/*"
+      ],
+      "js": [
+        "page.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://dion.vc/*",
+        "https://*.dion.vc/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start"
     }
   ],
@@ -32,9 +48,13 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["sounds/*", "inject.js"],
-      "matches": ["https://dion.vc/*", "https://*.dion.vc/*"]
+      "resources": [
+        "sounds/*"
+      ],
+      "matches": [
+        "https://dion.vc/*",
+        "https://*.dion.vc/*"
+      ]
     }
   ]
 }
-
