@@ -67,7 +67,7 @@ def main():
     # Создаем иконки разных размеров
     sizes = [16, 48, 128]
     for size in sizes:
-        filename = f'icons/icon{size}.png'
+        filename = f'extension/icons/icon{size}.png'
         create_icon(size, filename)
     
     print("\n✅ Все иконки созданы!")
