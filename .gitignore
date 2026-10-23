@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# Synology Drive
+@eaDir/
+#recycle/
+*.syncing
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# Extension packaging
+*.zip
+*.crx
+*.pem
+
+# BMAD
+_bmad-output/
+_bmad/config.user.toml
+_bmad/custom/config.user.toml
+
+# Claude Code (local settings)
+.claude/settings.local.json
