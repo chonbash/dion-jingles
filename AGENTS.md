@@ -11,7 +11,8 @@
 - Мир страницы: `extension/page.js` (`content_scripts` с `"world": "MAIN"`, `document_start`). Он оборачивает только `MediaDevices.prototype.getUserMedia`: аудиотрек микрофона и шина джинглов (`GainNode`) сводятся в общем `AudioContext` в `MediaStreamDestination`, и dion получает смешанный трек (`label`/`getSettings`/`getConstraints`/`applyConstraints` проксируются к микрофону, `stop()` останавливает микрофон). Не удалось смешать (нет аудио, `AudioContext` не `running` за ~300 мс, ошибка) — отдаётся исходный поток.
 - Изолированный мир: `extension/content.js` — сообщения popup (`playSound`, `toggleWebRTC`), локальное воспроизведение (ведущий слышит всегда), отправка звука в `page.js`, проброс `webrtcEnabled`. UI: `extension/popup.js`.
 - Связь мир страницы ↔ content script — только `CustomEvent` на `document`: в страницу `__dionJinglesPlayWithUrl` (base64 data-URL mp3), `__dionJinglesPlayGenerated`, `__dionJinglesSetEnabled`; из страницы `__dionJinglesHello`, `__dionJinglesRequestPlay`. Состояние эфира: `__dionJinglesQueryAir` → `__dionJinglesAirState` (`{id, air}`). popup → content script — `chrome.tabs.sendMessage`; на `playSound` ответ асинхронный `{success, air}` (нет ответа от `page.js` за ~300 мс → `air: 'unknown'`), popup по `air` показывает предупреждение.
-- `DEBUG*.md`, `HOW_TO_FIND_RTCPEERCONNECTION.md`, `DEVTOOLS_GUIDE.md`, README/INSTALL описывают старую схему (перехват `RTCPeerConnection`) и устарели — не опирайся на них.
+- `tools/listener/` — Docker-слушатель на Playwright: входит в комнату гостем и пишет уровень входящего звука.
+- BMAD (`_bmad/`, `.claude/skills/`) — локальный инструментарий, в git не входит.
 
 ## Running and verifying
 
